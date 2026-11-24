@@ -343,7 +343,7 @@ def build_main_documentation():
     )
 
     # 2. Diagrama de Arquitectura
-    add_section_heading(doc, "2. Diagrama de Arquitectura e Interacción de Componentes")
+    add_section_heading(doc, "2. Diagrama de Arquitectura, Flujo de Datos y Función de Cada Servicio AWS")
     add_body_p(
         doc,
         "La arquitectura implementa separación estricta de capas (presentación estática, balanceo de carga, cómputo auto-escalable sin estado, "
@@ -356,22 +356,91 @@ def build_main_documentation():
         width_inches=6.8,
     )
 
+    add_sub_heading(doc, "2.1 Recorrido Paso a Paso del Flujo de Datos")
+    add_body_p(
+        doc,
+        "A continuación se recorre el diagrama de izquierda a derecha describiendo cómo viajan las solicitudes y los datos a través de cada capa de AWS:",
+    )
+    add_bullet(
+        doc,
+        "Flujo 1 — Carga de la Aplicación Web (Usuario → Amazon S3 Frontend SPA): ",
+        "Cuando un estudiante o administrador ingresa a la URL pública de EventCut, su navegador descarga directamente desde el bucket Amazon S3 Static Website Hosting el archivo index.html y los bundles optimizados de Vue 3, Tailwind CSS y TresJS. Al ser contenido estático servido por S3, no consume CPU ni memoria de los servidores backend; además, el ErrorDocument apunta a index.html para soportar todas las rutas internas de Vue Router.",
+    )
+    add_bullet(
+        doc,
+        "Flujo 2 — Peticiones API, Autenticación JWT y Enrutamiento (Navegador → ALB → EC2/Traefik → Microservicios → RDS): ",
+        "El SPA envía peticiones REST (login, registro, consulta de cartelera, calendario, favoritos, comunidades y moderación) hacia el Application Load Balancer (eventcut-alb) en el puerto HTTP 80. El ALB distribuye el tráfico en modo Round-Robin hacia el puerto 8080 de las instancias EC2 saludables en us-east-1a y us-east-1b. Dentro de cada nodo EC2, Traefik v3.4 actúa como API Gateway: bloquea con HTTP 403 cualquier intento externo a /api/internal, envía /api/auth, /api/users y /api/health a auth-service (:8000) y enruta /api/v1/* a events-service (:8001). Ambos microservicios consultan y persisten datos de forma privada en Amazon RDS MySQL 8.0 (:3306) dentro de la VPC.",
+    )
+    add_bullet(
+        doc,
+        "Flujo 3 — Carga, Optimización y Lectura de Imágenes (Navegador → ALB → events-service → Amazon S3 Media): ",
+        "Al crear un evento o comunidad con imagen, el frontend solicita una ruta de subida (/api/v1/events/image-upload-url) y realiza un HTTP PUT hacia /proxy-upload. El microservicio events-service valida el formato real del archivo, lo optimiza a formato seguro con Pillow y lo sube al bucket Amazon S3 Media bajo el prefijo temporal pending/ autenticándose sin contraseñas fijas mediante AWS IAM (LabInstanceProfile vía IMDSv2). Cuando el evento se guarda en RDS, el backend promueve el objeto en S3 (copy + delete) a events/ y guarda la URL pública HTTPS de S3. Posteriormente, los navegadores descargan los banners directamente desde Amazon S3.",
+    )
+    add_bullet(
+        doc,
+        "Flujo 4 — Automatización IaC, CI/CD y Auto-Healing (Wizard / GitHub Actions → S3 Artefactos → ASG → CloudWatch/SNS): ",
+        "El Wizard Web IaC (y el pipeline de GitHub Actions) empaquetan el backend en backend-latest.tar.gz y lo publican en el bucket privado Amazon S3 Artefactos. Cada vez que arranca una instancia EC2 nueva —ya sea en el despliegue inicial o cuando el Auto Scaling Group reemplaza un nodo caído— su script user_data descarga el artefacto desde S3, adquiere un lock distribuido en RDS (GET_LOCK) para validar migraciones Alembic de forma segura y levanta Docker Compose. Simultáneamente, CloudWatch supervisa métricas de ALB, ASG y RDS y dispara alertas al tópico Amazon SNS ante cualquier anomalía.",
+    )
+
+    add_sub_heading(doc, "2.2 Función Detallada de Cada Servicio de AWS en la Arquitectura")
     nodes = state.get("ec2_instances", [])
     nodes_txt = ", ".join(f"{n['instance_id']} ({n['az']})" for n in nodes) if nodes else "2 nodos t3.small en us-east-1a / us-east-1b"
     add_styled_table(
         doc,
-        ["Capa / Componente", "Servicio AWS", "Configuración Real Desplegada"],
+        ["Servicio AWS", "Función Principal en EventCut", "Configuración Real Desplegada"],
         [
-            ["Frontend SPA", "Amazon S3 Static Website", f"Bucket: {state.get('frontend_bucket', 'eventcut-web-*')} (SPA fallback index.html)"],
-            ["Almacenamiento Media", "Amazon S3 (ex-Cloudflare R2)", f"Bucket: {state.get('media_bucket', 'eventcut-media-*')} (CORS + Lifecycle pending/ 1 día)"],
-            ["Artefactos IaC", "Amazon S3 Privado", f"Bucket: {state.get('artifacts_bucket', 'eventcut-artifacts-*')} (releases/backend-latest.tar.gz)"],
-            ["Balanceo y Entrada", "Application Load Balancer", f"DNS: {state.get('alb_dns', 'eventcut-alb-*')} | HealthCheck GET /api/health cada 15s"],
-            ["Cómputo Resiliente", "EC2 + Auto Scaling Group", f"ASG: {state.get('asg_name', 'eventcut-asg')} (Min=2, Max=4, CPU Target 60%) | Nodos: {nodes_txt}"],
-            ["Base de Datos Privada", "Amazon RDS MySQL 8.0", f"Endpoint: {state.get('rds_endpoint', 'eventcut-mysql-db.*')}:3306 (PubliclyAccessible=False)"],
-            ["Seguridad de Red", "VPC + 3 Security Groups", f"ALB({state.get('alb_sg_id', '-')}) -> App({state.get('app_sg_id', '-')}) -> RDS({state.get('rds_sg_id', '-')})"],
-            ["Observabilidad", "CloudWatch + Amazon SNS", f"4 Alarmas críticas conectadas a {state.get('sns_topic_arn', 'eventcut-alerts')}"],
+            [
+                "Amazon VPC y Subredes Multi-AZ",
+                "Aísla la red privada de la aplicación y distribuye los recursos en al menos dos Zonas de Disponibilidad físicas independientes para tolerar fallos de centro de datos.",
+                f"VPC {state.get('vpc_id', 'default')} | AZs: us-east-1a y us-east-1b + DB Subnet Group",
+            ],
+            [
+                "VPC Security Groups (3 capas)",
+                "Actúan como firewalls virtuales con estado bajo el principio de mínimo privilegio, restringiendo exactamente qué capa puede comunicarse con otra.",
+                f"ALB({state.get('alb_sg_id', '-')}) :80 público → App({state.get('app_sg_id', '-')}) :8080 solo ALB → RDS({state.get('rds_sg_id', '-')}) :3306 solo App",
+            ],
+            [
+                "Amazon S3 (3 Buckets)",
+                "Almacenamiento de objetos con 99.999999999% de durabilidad: (1) aloja el Frontend Vue 3 SPA, (2) almacena imágenes de eventos/comunidades reemplazando a Cloudflare R2 con Lifecycle 24h en pending/, y (3) guarda artefactos de despliegue backend.",
+                f"Web: {state.get('frontend_bucket', 'eventcut-web-*')} | Media: {state.get('media_bucket', 'eventcut-media-*')} | Artefactos: {state.get('artifacts_bucket', 'eventcut-artifacts-*')}",
+            ],
+            [
+                "Application Load Balancer (ALB)",
+                "Punto único de entrada HTTP capa 7: balancea peticiones entre los nodos EC2, ejecuta health checks continuos cada 15s y drena automáticamente instancias fallidas en 15s.",
+                f"DNS: {state.get('alb_dns', 'eventcut-alb-*')} | Target Group :8080 | HealthCheck GET /api/health",
+            ],
+            [
+                "Amazon EC2 (Amazon Linux 2023)",
+                "Provee la capacidad de cómputo sin estado que ejecuta Docker Compose con Traefik v3.4, blocked-responder, auth-service y events-service con política restart: always.",
+                f"Instancias t3.small (2 vCPU, 2 GB RAM) | Nodos activos: {nodes_txt}",
+            ],
+            [
+                "EC2 Auto Scaling Group + Launch Template",
+                "Garantiza alta disponibilidad y elasticidad: mantiene siempre al menos 2 nodos saludables (auto-healing si una EC2 muere) y escala hasta 4 nodos si la CPU supera 60%.",
+                f"ASG: {state.get('asg_name', 'eventcut-asg')} (Min=2, Desired=2, Max=4) | HealthCheckType=ELB",
+            ],
+            [
+                "Amazon RDS (MySQL 8.0)",
+                "Base de datos relacional administrada y privada que desacopla el estado de los servidores efímeros, provee respaldos automáticos de 7 días y alberga eventcut_auth_db y eventcut_events_db.",
+                f"Endpoint: {state.get('rds_endpoint', 'eventcut-mysql-db.*')}:3306 | db.t3.micro | PubliclyAccessible=False",
+            ],
+            [
+                "AWS IAM (LabRole / LabInstanceProfile)",
+                "Entrega credenciales temporales rotativas mediante IMDSv2 a los contenedores EC2 para leer/escribir en Amazon S3 sin guardar Access Keys en archivos .env ni código fuente.",
+                "InstanceProfile: LabInstanceProfile | MetadataOptions HttpPutResponseHopLimit=2",
+            ],
+            [
+                "AWS Systems Manager (SSM Parameter Store)",
+                "Permite consultar dinámicamente el ID de la AMI oficial más reciente de Amazon Linux 2023 en cada ejecución del script IaC sin hardcodear AMIs obsoletas.",
+                "Parámetro: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64",
+            ],
+            [
+                "Amazon CloudWatch + Amazon SNS",
+                "Observabilidad y alertamiento proactivo: monitorizan salud del ALB, errores HTTP 5XX y CPU de ASG/RDS, enviando notificaciones mediante SNS ante incidentes.",
+                f"4 Alarmas CloudWatch activas → Tópico SNS: {state.get('sns_topic_arn', 'eventcut-alerts')}",
+            ],
         ],
-        col_widths=[1.45, 1.75, 3.9],
+        col_widths=[1.45, 3.0, 2.65],
     )
 
     # 3. Migración Cloudflare R2 -> Amazon S3

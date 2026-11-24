@@ -218,9 +218,29 @@ def build_presentation():
     if arch_img.is_file():
         s3.shapes.add_picture(str(arch_img), Inches(0.95), Inches(1.32), width=Inches(11.4))
 
-    # SLIDE 4: Migración Cloudflare R2 -> AWS S3 + Seguridad
+    # SLIDE 3B (Slide 4): Recorrido del Flujo de Datos y Función de cada Servicio AWS
+    s3b = prs.slides.add_slide(blank)
+    _add_header(s3b, "2B. Flujo de Datos y Función de Cada Servicio AWS", "Recorrido extremo a extremo desde el navegador del usuario hasta la persistencia y monitoreo", 4)
+    _add_card(s3b, 0.55, 1.45, 5.95, 5.3, "Flujo de Datos (Paso a Paso)", [
+        "1. SPA Estático: Navegador descarga Vue 3 directo de Amazon S3 Website (sin cargar al backend).",
+        "2. Tráfico API: Peticiones REST entran al ALB (:80) y se balancean 50/50 hacia EC2 (:8080) en AZ-a y AZ-b.",
+        "3. Gateway & Microservicios: Traefik bloquea /api/internal (403) y enruta a auth (:8000) y events (:8001).",
+        "4. Persistencia Privada: Ambos servicios leen/escriben en Amazon RDS MySQL (:3306) sin exposición pública.",
+        "5. Media S3: events-service optimiza imágenes (Pillow) y las sube a S3 Media vía IAM Role (IMDSv2).",
+        "6. Auto-Healing: Si cae un nodo EC2, ASG lanza otro, baja backend.tar.gz de S3 Artefactos y se reintegra.",
+    ], BLUE)
+    _add_card(s3b, 6.8, 1.45, 5.95, 5.3, "Función de Cada Servicio AWS", [
+        "VPC + 3 Security Groups: Red Multi-AZ y firewall encadenado (ALB → EC2 → RDS).",
+        "Amazon S3 (3 Buckets): Frontend SPA + Media (ex-R2, Lifecycle 24h) + Artefactos IaC.",
+        "ALB + Target Group: Balanceo capa 7, health checks /api/health cada 15s y failover veloz.",
+        "EC2 + Auto Scaling Group: 2 nodos t3.small Dockerizados (Min=2, Max=4, CPU target 60%).",
+        "Amazon RDS MySQL 8.0: BD administrada privada (auth_db + events_db) con backups 7 días.",
+        "IAM + SSM + CloudWatch/SNS: Credenciales temporales, AMI AL2023 dinámica y 4 alarmas.",
+    ], GREEN)
+
+    # SLIDE 5: Migración Cloudflare R2 -> AWS S3 + Seguridad
     s4 = prs.slides.add_slide(blank)
-    _add_header(s4, "3. Migración Cloudflare R2 → Amazon S3 y Seguridad", "Eliminación de proveedor externo y credenciales estáticas mediante IAM Instance Profile", 4)
+    _add_header(s4, "3. Migración Cloudflare R2 → Amazon S3 y Seguridad", "Eliminación de proveedor externo y credenciales estáticas mediante IAM Instance Profile", 5)
     _add_card(s4, 0.55, 1.5, 5.9, 5.2, "Antes (Cloudflare R2) vs. Ahora (Amazon S3)", [
         "Antes: 5 variables R2_* con Access/Secret Keys fijas en .env y proveedor externo fuera de VPC/AWS.",
         "Ahora: 3 buckets nativos S3 (Media, Frontend SPA Website y Artefactos IaC) en us-east-1.",
@@ -236,9 +256,9 @@ def build_presentation():
         "Traefik bloquea /api/internal con respuesta 403/404 desde el perímetro.",
     ], BLUE)
 
-    # SLIDE 5: Infraestructura como Código y Wizard Paso a Paso
+    # SLIDE 6: Infraestructura como Código y Wizard Paso a Paso
     s5 = prs.slides.add_slide(blank)
-    _add_header(s5, "4. Automatización IaC: Wizard Web Paso a Paso (10 Steps)", "Despliegue determinista, reproducible desde 0 y con limpieza total integrada", 5)
+    _add_header(s5, "4. Automatización IaC: Wizard Web Paso a Paso (10 Steps)", "Despliegue determinista, reproducible desde 0 y con limpieza total integrada", 6)
     _add_card(s5, 0.55, 1.5, 6.0, 5.2, "Steps 0 al 4 (Preparación y Persistencia)", [
         "Step 0: Validación de AWS STS, LabInstanceProfile, KeyPair y NPM.",
         "Step 1: Limpieza TOTAL de us-east-1 (ASG, ALB, EC2, RDS, S3, DynamoDB, CloudWatch, SGs).",
@@ -254,9 +274,9 @@ def build_presentation():
         "Step 9: SNS + 4 alarmas CloudWatch + 6 pruebas E2E automáticas.",
     ], GREEN)
 
-    # SLIDE 6: CI/CD con GitHub Actions
+    # SLIDE 7: CI/CD con GitHub Actions
     s6 = prs.slides.add_slide(blank)
-    _add_header(s6, "5. Monorepo GitHub y Pipelines CI/CD por Ruta", "Integración y despliegue continuo con GitHub Actions superando la restricción de CodeBuild", 6)
+    _add_header(s6, "5. Monorepo GitHub y Pipelines CI/CD por Ruta", "Integración y despliegue continuo con GitHub Actions superando la restricción de CodeBuild", 7)
     _add_card(s6, 0.55, 1.6, 5.9, 5.0, "Pipeline Frontend (.github/workflows/frontend-ci-cd.yml)", [
         "Disparador inteligente por ruta: solo corre ante cambios en frontend/**.",
         "Instala Node.js 22 y dependencias reproducibles (npm ci).",
@@ -270,9 +290,9 @@ def build_presentation():
         "Dispara ASG Instance Refresh (MinHealthyPercentage: 50%) para despliegue sin caída.",
     ], GREEN)
 
-    # SLIDE 7: Justificación de Decisiones
+    # SLIDE 8: Justificación de Decisiones
     s7 = prs.slides.add_slide(blank)
-    _add_header(s7, "6. Justificación de Decisiones Tecnológicas en AWS", "Por qué elegimos cada servicio frente a sus alternativas comerciales", 7)
+    _add_header(s7, "6. Justificación de Decisiones Tecnológicas en AWS", "Por qué elegimos cada servicio frente a sus alternativas comerciales", 8)
     _add_card(s7, 0.55, 1.5, 3.9, 5.2, "EC2 + ASG + ALB vs. EC2 Única / ECS", [
         "EC2 única tiene punto único de falla.",
         "ASG Multi-AZ da auto-reparación real y escalado por CPU (60%).",
@@ -289,9 +309,9 @@ def build_presentation():
         "S3 Website aloja el SPA por centavos/mes (CloudFront restringido en Lab).",
     ], GREEN)
 
-    # SLIDE 8: Análisis de Costos (1 Año)
+    # SLIDE 9: Análisis de Costos (1 Año)
     s8 = prs.slides.add_slide(blank)
-    _add_header(s8, "7. Análisis de Costos (1 Año Fuera de Capa Gratuita)", "Estimación comercial real en us-east-1 y estrategias de Computación Sustentable", 8)
+    _add_header(s8, "7. Análisis de Costos (1 Año Fuera de Capa Gratuita)", "Estimación comercial real en us-east-1 y estrategias de Computación Sustentable", 9)
     _add_kpi(s8, 0.55, 1.45, 3.85, 1.35, "$71.45 / mes", "Costo On-Demand 24/7 ($857.40/año)", BLUE)
     _add_kpi(s8, 4.72, 1.45, 3.85, 1.35, "$628 / año", "Con Savings Plan + RDS RI (-26.8%)", GREEN)
     _add_kpi(s8, 8.9, 1.45, 3.85, 1.35, "$492 / año", "Horario Académico Sustentable (-42.6%)", AMBER)
@@ -299,9 +319,9 @@ def build_presentation():
     if cost_img.is_file():
         s8.shapes.add_picture(str(cost_img), Inches(1.1), Inches(3.0), width=Inches(11.1))
 
-    # SLIDE 9: Pruebas de Resiliencia 1 & 2
+    # SLIDE 10: Pruebas de Resiliencia 1 & 2
     s9 = prs.slides.add_slide(blank)
-    _add_header(s9, "8. Pruebas de Resiliencia: Carga Multi-AZ y Caída de Contenedor", "Evidencias reales capturadas sobre la infraestructura desplegada en vivo", 9)
+    _add_header(s9, "8. Pruebas de Resiliencia: Carga Multi-AZ y Caída de Contenedor", "Evidencias reales capturadas sobre la infraestructura desplegada en vivo", 10)
     _add_kpi(s9, 0.55, 1.4, 3.85, 1.2, f"{t1.get('success_rate_pct', 100)}%", f"Disponibilidad bajo carga ({t1.get('avg_latency_ms', '-')} ms prom.)", BLUE)
     _add_kpi(s9, 4.72, 1.4, 3.85, 1.2, f"{t2.get('availability_pct', '-')}%", "Disponibilidad ALB tras docker kill", GREEN)
     _add_kpi(s9, 8.9, 1.4, 3.85, 1.2, f"{t2.get('recovery_seconds', '-')} s", "Auto-recuperación de contenedor Docker", AMBER)
@@ -312,9 +332,9 @@ def build_presentation():
     if c2.is_file():
         s9.shapes.add_picture(str(c2), Inches(6.75), Inches(2.85), width=Inches(6.05))
 
-    # SLIDE 10: Prueba de Resiliencia 3 (Destrucción de EC2 + ASG)
+    # SLIDE 11: Prueba de Resiliencia 3 (Destrucción de EC2 + ASG)
     s10 = prs.slides.add_slide(blank)
-    _add_header(s10, "9. Prueba de Caos Crítica: Destrucción de Nodo EC2 + ASG", "Un servidor completo es terminado vía API; el servicio sobrevive y AWS lo reemplaza solo", 10)
+    _add_header(s10, "9. Prueba de Caos Crítica: Destrucción de Nodo EC2 + ASG", "Un servidor completo es terminado vía API; el servicio sobrevive y AWS lo reemplaza solo", 11)
     _add_kpi(s10, 0.55, 1.4, 3.85, 1.2, f"{t3.get('availability_pct', '-')}%", "Disponibilidad externa durante crisis", GREEN)
     _add_kpi(s10, 4.72, 1.4, 3.85, 1.2, f"{t3.get('recovery_seconds', '-')} s", "Tiempo hasta 2/2 nodos Healthy (ASG)", BLUE)
     _add_kpi(s10, 8.9, 1.4, 3.85, 1.2, "0 datos perdidos", "RDS MySQL y S3 Media 100% intactos", AMBER)
@@ -322,9 +342,9 @@ def build_presentation():
     if c3.is_file():
         s10.shapes.add_picture(str(c3), Inches(1.15), Inches(2.8), width=Inches(11.0))
 
-    # SLIDE 11: Demostración en Vivo y Conclusiones
+    # SLIDE 12: Demostración en Vivo y Conclusiones
     s11 = prs.slides.add_slide(blank)
-    _add_header(s11, "10. Demostración en Vivo y Conclusiones", "Flujo de defensa en clase y lecciones clave de arquitectura sustentable en AWS", 11)
+    _add_header(s11, "10. Demostración en Vivo y Conclusiones", "Flujo de defensa en clase y lecciones clave de arquitectura sustentable en AWS", 12)
     _add_card(s11, 0.55, 1.5, 6.0, 5.2, "Guion de Demostración en Vivo", [
         f"1. Abrir EventCut SPA en S3: {state.get('frontend_website_url', 'http://<frontend-s3>')}",
         f"2. Login Admin ({state.get('admin_email', 'admin@eventcut.edu.mx')}) y subir un evento con imagen real a Amazon S3.",

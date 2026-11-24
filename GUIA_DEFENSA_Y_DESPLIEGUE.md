@@ -37,7 +37,36 @@ Tus proyectos locales viejos (`WebstormProjects\EventCut` y `PycharmProjects\Fas
 
 ---
 
-## 2. ¿Qué necesitas llevar contigo el día de la presentación?
+## 2. Recorrido del Diagrama de Arquitectura: Flujo de Datos y Función de Cada Servicio AWS
+
+Durante tu defensa en clase, cuando muestres el diagrama (`docs/evidencias/arquitectura_eventcut_aws.png` o la Diapositiva 3–4), recórrelo de **izquierda a derecha** explicando estos **4 flujos de datos**:
+
+1. **Carga del Frontend SPA (`Usuario → Amazon S3 Website`):**
+   El navegador del usuario entra al sitio estático en **Amazon S3 Static Website Hosting** y descarga `index.html` + los bundles de Vue 3, Tailwind y TresJS. Al servirse directamente desde S3, el frontend escala automáticamente y no consume recursos de los servidores EC2.
+2. **Tráfico API y Microservicios (`Usuario → ALB → EC2/Traefik → Auth / Events → RDS`):**
+   El SPA envía las peticiones REST al **Application Load Balancer (`eventcut-alb`, puerto `:80`)**, que las reparte 50/50 entre **2 instancias EC2 (`t3.small`)** en distintas Zonas de Disponibilidad (`us-east-1a` y `us-east-1b`) por el puerto `:8080`. Dentro de cada EC2, **Traefik v3.4** bloquea `/api/internal` (HTTP 403) y enruta `/api/auth`, `/api/users` y `/api/health` a `auth-service` (`:8000`) y `/api/v1/*` a `events-service` (`:8001`). Ambos consultan de forma privada **Amazon RDS MySQL 8.0** (`:3306`).
+3. **Subida y Lectura de Imágenes (`Usuario → ALB → events-service → Amazon S3 Media`):**
+   Al subir una imagen, `events-service` la valida y optimiza con Pillow y la guarda en el bucket **Amazon S3 Media** (migrado desde Cloudflare R2) bajo `pending/`, autenticándose sin llaves fijas gracias al **IAM Instance Profile (`LabInstanceProfile`)** vía IMDSv2. Al confirmarse el evento, el objeto se promueve a `events/` y el navegador lo lee directo por HTTPS desde S3. Si alguien abandona el formulario, una regla **S3 Lifecycle** borra el archivo temporal a las 24 horas.
+4. **Automatización, Auto-Healing y Observabilidad (`Wizard/GitHub Actions → S3 Artefactos → ASG → CloudWatch/SNS`):**
+   El código backend se empaqueta en `backend-latest.tar.gz` y vive en **S3 Artefactos**. Si una EC2 muere o sube la CPU por encima del 60%, el **Auto Scaling Group** crea una nueva instancia usando el **Launch Template** (AMI AL2023 consultada en **SSM Parameter Store**), descarga el paquete de S3, coordina migraciones con `GET_LOCK` en RDS y se registra en el ALB. **CloudWatch** monitorea salud del ALB, errores 5XX y CPU, notificando por **Amazon SNS**.
+
+### Resumen rápido — Función de cada servicio AWS usado:
+| Servicio AWS | Función exacta en EventCut |
+| :--- | :--- |
+| **Amazon VPC + Subnets Multi-AZ** | Red privada aislada repartida en `us-east-1a` y `us-east-1b` para tolerancia a fallos. |
+| **Security Groups (3 capas)** | Firewall por mínimo privilegio: `ALB (:80)` → `EC2 (:8080)` → `RDS (:3306)`. |
+| **Amazon S3 (3 Buckets)** | (1) Hosting SPA Vue 3, (2) Almacenamiento multimedia ex-Cloudflare R2 con Lifecycle, (3) Artefactos de despliegue para EC2. |
+| **Application Load Balancer (ALB)** | Entrada única HTTP capa 7, balanceo Multi-AZ y Health Checks cada 15s (`/api/health`). |
+| **Amazon EC2** | Servidores Amazon Linux 2023 ejecutando Docker Compose (`Traefik`, `auth`, `events`, `restart: always`). |
+| **Auto Scaling Group + Launch Template** | Mantiene mínimo 2 instancias sanas (auto-reparación) y escala hasta 4 si CPU > 60%. |
+| **Amazon RDS MySQL 8.0** | Base de datos privada (`PubliclyAccessible=False`) para `eventcut_auth_db` y `eventcut_events_db` con backups de 7 días. |
+| **AWS IAM (`LabInstanceProfile`)** | Otorga permisos temporales rotativos a los contenedores Docker para operar S3 sin llaves estáticas. |
+| **AWS SSM Parameter Store** | Obtiene dinámicamente la última AMI oficial de Amazon Linux 2023 al desplegar. |
+| **Amazon CloudWatch + Amazon SNS** | 4 alarmas críticas (UnHealthyHosts, HTTP 5XX, ASG CPU, RDS CPU) conectadas al tópico `eventcut-alerts`. |
+
+---
+
+## 3. ¿Qué necesitas llevar contigo el día de la presentación?
 
 Literalmente **solo 3 cosas**:
 1. **`eventcut_launcher.py`** (un único archivo Python portable; está en la raíz del repo y en `py-aws/`).
@@ -48,7 +77,7 @@ Literalmente **solo 3 cosas**:
 
 ---
 
-## 3. Tutorial Paso a Paso (Desde una PC en blanco o desde tu Laptop)
+## 4. Tutorial Paso a Paso (Desde una PC en blanco o desde tu Laptop)
 
 ### Paso A: Actualizar tus credenciales de AWS Academy Learner Lab
 Cada vez que inicias el laboratorio en AWS Academy, tus credenciales temporales cambian (duran 4 horas):
@@ -75,7 +104,7 @@ python eventcut_launcher.py
 
 ---
 
-## 4. Recorrido de los 10 Steps en el Wizard Web (Qué explicar al profesor en cada clic)
+## 5. Recorrido de los 10 Steps en el Wizard Web (Qué explicar al profesor en cada clic)
 
 En el navegador verás la barra de progreso, los 10 pasos y el botón azul **`▶ Continuar (Ejecutar Step)`** junto con el botón rojo **`🗑 Limpiar Todo AWS (Desde 0)`**.
 
@@ -96,7 +125,7 @@ En el navegador verás la barra de progreso, los 10 pasos y el botón azul **`�
 
 ---
 
-## 5. Cómo Demostrar la Aplicación Web Funcionando en Vivo
+## 6. Cómo Demostrar la Aplicación Web Funcionando en Vivo
 
 Cuando termine el Step 9, el panel inferior derecho del Wizard te mostrará enlaces directos clicables:
 
@@ -112,7 +141,7 @@ Cuando termine el Step 9, el panel inferior derecho del Wizard te mostrará enla
 
 ---
 
-## 6. Cómo Demostrar las Pruebas de Resiliencia en Vivo
+## 7. Cómo Demostrar las Pruebas de Resiliencia en Vivo
 
 Tienes dos formas:
 
@@ -141,7 +170,7 @@ Abre dos terminales lado a lado:
 
 ---
 
-## 7. Modos Alternativos del Script Portable
+## 8. Modos Alternativos del Script Portable
 
 Si por alguna razón prefieres no abrir el navegador local:
 ```powershell
@@ -160,7 +189,7 @@ python eventcut-aws/infra/aws_deployer.py --step cleanup
 
 ---
 
-## 8. Preguntas Frecuentes en la Defensa (y cómo responderlas)
+## 9. Preguntas Frecuentes en la Defensa (y cómo responderlas)
 
 1. **¿Por qué usaron GitHub Actions en vez de AWS CodeBuild y S3 Website en vez de CloudFront?**
    > Porque verificamos mediante AWS CLI las políticas del rol `voclabs` en AWS Academy Learner Lab: `codebuild:ListProjects` y `cloudfront:ListDistributions` devuelven `AccessDenied`. En lugar de quedarnos bloqueados, diseñamos una arquitectura 100% funcional con servicios autorizados (ALB, ASG, EC2, RDS, S3, CloudWatch, SNS) complementada con GitHub Actions para CI/CD.
