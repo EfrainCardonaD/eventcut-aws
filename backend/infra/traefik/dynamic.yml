@@ -1,0 +1,67 @@
+http:
+  routers:
+    block-internal:
+      entryPoints:
+        - web
+      rule: PathPrefix(`/api/internal`)
+      priority: 1000
+      service: blocked
+
+    auth:
+      entryPoints:
+        - web
+      rule: PathPrefix(`/api/auth`) || PathPrefix(`/api/users`) || PathPrefix(`/api/verify`) || PathPrefix(`/api/password-recovery`) || Path(`/api/health`)
+      priority: 100
+      middlewares:
+        - secure-headers
+      service: auth
+
+    events:
+      entryPoints:
+        - web
+      rule: PathPrefix(`/api/v1`)
+      priority: 90
+      middlewares:
+        - secure-headers
+      service: events
+
+    events-health:
+      entryPoints:
+        - web
+      rule: Path(`/api/events/health`)
+      middlewares:
+        - secure-headers
+        - events-health-rewrite
+      service: events
+
+  middlewares:
+    secure-headers:
+      headers:
+        frameDeny: true
+        contentTypeNosniff: true
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        customResponseHeaders:
+          Server: ""
+
+    events-health-rewrite:
+      replacePath:
+        path: /api/health
+
+  services:
+    blocked:
+      loadBalancer:
+        servers:
+          - url: http://blocked-responder:80
+
+    auth:
+      loadBalancer:
+        servers:
+          - url: http://auth-service:8000
+
+    events:
+      loadBalancer:
+        servers:
+          - url: http://events-service:8001
+

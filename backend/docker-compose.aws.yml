@@ -1,0 +1,90 @@
+name: eventcut-aws-platform
+
+services:
+  traefik:
+    image: traefik:v3.4
+    container_name: eventcut-traefik
+    restart: always
+    command:
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:8080
+      - --log.level=INFO
+      - --accesslog=true
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+    networks:
+      - edge
+
+  blocked-responder:
+    image: nginx:alpine
+    container_name: eventcut-blocked-responder
+    restart: always
+    volumes:
+      - ./infra/blocked/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - edge
+
+  auth-service:
+    image: eventcut/auth-service:aws
+    build:
+      context: .
+      dockerfile: auth/Dockerfile
+    container_name: eventcut-auth-service
+    restart: always
+    env_file:
+      - auth/.env
+    volumes:
+      - ./scripts:/app/scripts:ro
+    environment:
+      APP_GATEWAY_VALIDATION_ENABLED: "true"
+      EC2_INSTANCE_ID: "${EC2_INSTANCE_ID:-unknown}"
+      AWS_AZ: "${AWS_AZ:-us-east-1}"
+      HEALTH_CHECK_DB: "true"
+    expose:
+      - "8000"
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  events-service:
+    image: eventcut/events-service:aws
+    build:
+      context: .
+      dockerfile: events_service/Dockerfile
+    container_name: eventcut-events-service
+    restart: always
+    env_file:
+      - events_service/.env
+    volumes:
+      - ./scripts:/app/scripts:ro
+    environment:
+      AUTH_SERVICE_BASE_URL: "http://auth-service:8000"
+      AUTH_REMOTE_VALIDATION_ENABLED: "true"
+      EC2_INSTANCE_ID: "${EC2_INSTANCE_ID:-unknown}"
+      AWS_AZ: "${AWS_AZ:-us-east-1}"
+      HEALTH_CHECK_DB: "true"
+    depends_on:
+      auth-service:
+        condition: service_started
+    expose:
+      - "8001"
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/health', timeout=3)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  edge:
+    name: eventcut_edge

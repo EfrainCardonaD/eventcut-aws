@@ -1,0 +1,34 @@
+http:
+  routers:
+    auth:
+      entryPoints: [web]
+      rule: PathPrefix(`/api/auth`) || PathPrefix(`/api/users`) || PathPrefix(`/api/verify`) || PathPrefix(`/api/password-recovery`) || Path(`/api/health`)
+      priority: 100
+      service: auth
+
+    events:
+      entryPoints: [web]
+      rule: PathPrefix(`/api/v1`)
+      priority: 90
+      service: events
+
+    events-health:
+      entryPoints: [web]
+      rule: Path(`/api/events/health`)
+      middlewares: [events-health-rewrite]
+      service: events
+
+  middlewares:
+    events-health-rewrite:
+      replacePath:
+        path: /api/health
+
+  services:
+    auth:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:8000
+    events:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:8001

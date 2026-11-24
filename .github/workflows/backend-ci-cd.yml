@@ -1,0 +1,57 @@
+name: Backend CI/CD (FastAPI Microservices -> S3 + ASG Rolling Refresh)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci-cd.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+  workflow_dispatch:
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout Monorepo
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r auth/requirements.txt -r events_service/requirements.txt
+
+      - name: Run Auth & Events Service unit tests
+        run: python -m pytest auth/tests events_service/tests -v
+
+      - name: Package backend release artifact
+        run: |
+          tar --exclude='.env' --exclude='__pycache__' --exclude='.pytest_cache' -czf ../backend-latest.tar.gz .
+
+      - name: Configure AWS credentials (if configured)
+        if: github.ref == 'refs/heads/main' && secrets.AWS_ACCESS_KEY_ID != '' && vars.AWS_S3_ARTIFACTS_BUCKET != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Publish backend artifact to S3 & Trigger Zero-Downtime ASG Instance Refresh
+        if: github.ref == 'refs/heads/main' && secrets.AWS_ACCESS_KEY_ID != '' && vars.AWS_S3_ARTIFACTS_BUCKET != ''
+        run: |
+          aws s3 cp ../backend-latest.tar.gz "s3://${{ vars.AWS_S3_ARTIFACTS_BUCKET }}/releases/backend-latest.tar.gz"
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "${{ vars.AWS_ASG_NAME || 'eventcut-asg' }}" \
+            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 240}'

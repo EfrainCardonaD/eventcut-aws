@@ -1,0 +1,36 @@
+# Variables de entorno y secretos
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+env/
+ngrok.yml
+.ngrok2.yml
+
+# IDE / system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+results.txt
+security_tests.py
+test_payload.json
+events_service/tests/test_ban_propagation_soft_delete.py
+events_service/tests/test_ban_propagation_soft_delete.py
+/test_login.py

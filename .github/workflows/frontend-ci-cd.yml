@@ -1,0 +1,62 @@
+name: Frontend CI/CD (Vue 3 -> Amazon S3)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci-cd.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout Monorepo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production SPA bundle
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'http://localhost:8080' }}
+          VITE_EVENTS_API_BASE_URL: ${{ vars.VITE_EVENTS_API_BASE_URL || 'http://localhost:8080' }}
+          VITE_COMMUNITIES_API_BASE_URL: ${{ vars.VITE_COMMUNITIES_API_BASE_URL || 'http://localhost:8080' }}
+          VITE_USE_DEV_PROXY: "false"
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eventcut-frontend-dist
+          path: frontend/dist
+
+      - name: Configure AWS credentials (if configured)
+        if: github.ref == 'refs/heads/main' && secrets.AWS_ACCESS_KEY_ID != '' && vars.AWS_S3_FRONTEND_BUCKET != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Deploy SPA to Amazon S3 Static Website
+        if: github.ref == 'refs/heads/main' && secrets.AWS_ACCESS_KEY_ID != '' && vars.AWS_S3_FRONTEND_BUCKET != ''
+        run: |
+          aws s3 sync dist/ "s3://${{ vars.AWS_S3_FRONTEND_BUCKET }}/" --delete --exclude "index.html" --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp dist/index.html "s3://${{ vars.AWS_S3_FRONTEND_BUCKET }}/index.html" --cache-control "no-cache,no-store,must-revalidate" --content-type "text/html"

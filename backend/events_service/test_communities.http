@@ -1,0 +1,275 @@
+### ===========================================
+### TESTS DE COMUNIDADES - Events Service
+### ===========================================
+### Prerequisitos:
+### - Auth service corriendo en :8000
+### - Events service corriendo en :8001
+### 
+### Credenciales de test:
+### - Admin: dragonavensito@gmail.com / Aa123456.
+### - Usuario: juan.perez@universidad.edu.mx / MiContraseña2026!
+### ===========================================
+
+### Variables
+@authUrl = http://127.0.0.1:8000
+@eventsUrl = http://127.0.0.1:8001
+
+### ===========================================
+### 1. AUTENTICACIÓN - Obtener tokens
+### ===========================================
+
+### Login Admin (dragonavensito@gmail.com)
+# @name loginAdmin
+POST {{authUrl}}/api/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=dragonavensito@gmail.com&password=Aa123456
+
+### Login Usuario (juan.perez@universidad.edu.mx)
+# @name loginUser
+POST {{authUrl}}/api/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=juan.perez@universidad.edu.mx&password=MiContraseña2026!
+
+### ===========================================
+### 2. COMUNIDADES - CRUD Básico
+### ===========================================
+
+### 2.1 Crear comunidad (Usuario normal)
+# @name createCommunity
+POST {{eventsUrl}}/api/v1/communities
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "name": "Runners Monterrey Test",
+  "description": "Comunidad de corredores del área metropolitana de Monterrey para eventos de running y trail.",
+  "image_url": null,
+  "contact_email": "runners.mty@test.com",
+  "is_accepted_terms": true,
+  "social_links": {
+    "whatsapp": "https://wa.me/528112345678",
+    "facebook": "https://facebook.com/runnersmty",
+    "instagram": "https://instagram.com/runnersmty"
+  }
+}
+
+### 2.2 Listar comunidades activas (público)
+GET {{eventsUrl}}/api/v1/communities
+Content-Type: application/json
+
+### 2.3 Listar mis comunidades (usuario autenticado)
+GET {{eventsUrl}}/api/v1/communities/my
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+### 2.4 Obtener detalle de comunidad
+GET {{eventsUrl}}/api/v1/communities/{{createCommunity.response.body.data.id}}
+Content-Type: application/json
+
+### ===========================================
+### 3. ADMIN - Moderación de comunidades
+### ===========================================
+
+### 3.1 Admin: Listar todas las comunidades
+GET {{eventsUrl}}/api/v1/admin/communities
+Authorization: Bearer {{loginAdmin.response.body.access_token}}
+Content-Type: application/json
+
+### 3.2 Admin: Listar comunidades PENDING
+GET {{eventsUrl}}/api/v1/admin/communities?status=PENDING
+Authorization: Bearer {{loginAdmin.response.body.access_token}}
+Content-Type: application/json
+
+### 3.3 Admin: Aprobar comunidad
+PATCH {{eventsUrl}}/api/v1/admin/communities/{{createCommunity.response.body.data.id}}/status
+Authorization: Bearer {{loginAdmin.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "action": "ACTIVATE"
+}
+
+### 3.4 Verificar comunidad ahora está ACTIVE (público)
+GET {{eventsUrl}}/api/v1/communities
+Content-Type: application/json
+
+### ===========================================
+### 4. EVENTOS CON SOCIAL LINKS Y COMUNIDAD
+### ===========================================
+
+### 4.1 Crear evento con social_links y community_id
+# @name createEventWithCommunity
+POST {{eventsUrl}}/api/v1/events
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "title": "Carrera 10K Fundidora Test",
+  "description": "Gran carrera de 10 kilómetros en el Parque Fundidora. Evento de prueba para la comunidad de runners.",
+  "start_datetime": "2026-05-15T07:00:00Z",
+  "end_datetime": "2026-05-15T12:00:00Z",
+  "location": "Parque Fundidora, Monterrey",
+  "category_id": 1,
+  "social_links": {
+    "whatsapp": "https://wa.me/528119876543",
+    "instagram": "https://instagram.com/carrera10k"
+  },
+  "community_id": "{{createCommunity.response.body.data.id}}"
+}
+
+### 4.2 Verificar evento creado tiene social_links
+GET {{eventsUrl}}/api/v1/events/{{createEventWithCommunity.response.body.data.id}}
+Content-Type: application/json
+
+### ===========================================
+### 5. SOLICITUDES DE EVENTOS A COMUNIDAD
+### ===========================================
+
+### 5.1 Crear otro evento sin comunidad
+# @name createEventNoCommunity
+POST {{eventsUrl}}/api/v1/events
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "title": "Trail Running Chipinque",
+  "description": "Carrera de trail running en la sierra de Chipinque",
+  "start_datetime": "2026-06-01T06:00:00Z",
+  "end_datetime": "2026-06-01T14:00:00Z",
+  "location": "Parque Ecológico Chipinque",
+  "category_id": 1
+}
+
+### 5.2 Solicitar que evento se una a comunidad
+POST {{eventsUrl}}/api/v1/communities/{{createCommunity.response.body.data.id}}/events/{{createEventNoCommunity.response.body.data.id}}/request
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+### 5.3 Owner de comunidad: Ver solicitudes pendientes
+GET {{eventsUrl}}/api/v1/communities/{{createCommunity.response.body.data.id}}/requests?status=PENDING
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+### 5.4 Owner de comunidad: Aprobar solicitud
+# Nota: Reemplazar {request_id} con el ID de la solicitud obtenido en 5.3
+PATCH {{eventsUrl}}/api/v1/communities/{{createCommunity.response.body.data.id}}/requests/{request_id}
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "action": "APPROVE"
+}
+
+### 5.5 Ver schedule de la comunidad (eventos aprobados)
+GET {{eventsUrl}}/api/v1/communities/{{createCommunity.response.body.data.id}}/events
+Content-Type: application/json
+
+### ===========================================
+### 6. SISTEMA DE BANEOS
+### ===========================================
+
+### 6.1 Admin: Banear usuario
+POST {{eventsUrl}}/api/v1/admin/users/test-user-id-to-ban/ban
+Authorization: Bearer {{loginAdmin.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "reason": "Test de baneo - violación de normas"
+}
+
+### 6.2 Admin: Listar usuarios baneados
+GET {{eventsUrl}}/api/v1/admin/users/banned
+Authorization: Bearer {{loginAdmin.response.body.access_token}}
+Content-Type: application/json
+
+### 6.3 Admin: Verificar estado de baneo de usuario
+GET {{eventsUrl}}/api/v1/admin/users/test-user-id-to-ban/ban-status
+Authorization: Bearer {{loginAdmin.response.body.access_token}}
+Content-Type: application/json
+
+### 6.4 Admin: Desbanear usuario
+DELETE {{eventsUrl}}/api/v1/admin/users/test-user-id-to-ban/ban
+Authorization: Bearer {{loginAdmin.response.body.access_token}}
+Content-Type: application/json
+
+### ===========================================
+### 7. ACTUALIZACIÓN DE COMUNIDAD
+### ===========================================
+
+### 7.1 Actualizar comunidad (solo owner)
+PATCH {{eventsUrl}}/api/v1/communities/{{createCommunity.response.body.data.id}}
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "description": "Comunidad ACTUALIZADA de corredores del área metropolitana de Monterrey",
+  "social_links": {
+    "whatsapp": "https://wa.me/528199999999",
+    "facebook": "https://facebook.com/runnersmonterrey",
+    "instagram": "https://instagram.com/runnersmonterrey"
+  }
+}
+
+### ===========================================
+### 8. CASOS DE ERROR ESPERADOS
+### ===========================================
+
+### 8.1 Error: Crear comunidad sin aceptar términos
+POST {{eventsUrl}}/api/v1/communities
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "name": "Comunidad Sin Términos",
+  "description": "Esta comunidad no aceptó los términos",
+  "contact_email": "test@test.com",
+  "is_accepted_terms": false
+}
+
+### 8.2 Error: Nombre de comunidad duplicado
+POST {{eventsUrl}}/api/v1/communities
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "name": "Runners Monterrey Test",
+  "description": "Intentando crear comunidad con nombre duplicado",
+  "contact_email": "test@test.com",
+  "is_accepted_terms": true
+}
+
+### 8.3 Error: Usuario sin rol admin intenta aprobar comunidad
+PATCH {{eventsUrl}}/api/v1/admin/communities/{{createCommunity.response.body.data.id}}/status
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "action": "ACTIVATE"
+}
+
+### 8.4 Error: Social link con formato inválido
+POST {{eventsUrl}}/api/v1/communities
+Authorization: Bearer {{loginUser.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "name": "Comunidad Link Invalido",
+  "description": "Probando validación de social links",
+  "contact_email": "test@test.com",
+  "is_accepted_terms": true,
+  "social_links": {
+    "whatsapp": "http://invalid-whatsapp-link.com"
+  }
+}
+
+### ===========================================
+### 9. HEALTH CHECK
+### ===========================================
+
+### Health check Events Service
+GET {{eventsUrl}}/api/health
+
+### Health check Auth Service  
+GET {{authUrl}}/api/health

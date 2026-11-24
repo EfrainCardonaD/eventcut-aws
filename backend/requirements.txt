@@ -1,0 +1,29 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+pydantic-settings>=2.2
+python-dotenv>=1.0
+
+# Security / auth (se usará en siguientes pasos)
+PyJWT>=2.8
+passlib>=1.7.4,<2.0.0
+bcrypt>=4.0.1,<5.0.0
+
+# Database (se usará en siguientes pasos)
+SQLAlchemy>=2.0
+PyMySQL>=1.1
+cryptography>=42.0
+alembic>=1.13
+
+# Email (se usará en siguientes pasos)
+aiosmtplib>=3.0
+email-validator>=2.1
+pytest>=8.0
+
+
+boto3
+botocore
+
+# Image Processing (Optimization service)
+Pillow>=10.2.0
+filetype>=1.2.0

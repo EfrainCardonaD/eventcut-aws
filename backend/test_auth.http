@@ -1,0 +1,115 @@
+### Health
+GET http://127.0.0.1:8000/api/health
+Accept: application/json
+
+###
+
+### Register
+POST http://127.0.0.1:8000/api/auth/register
+Content-Type: application/json
+
+{
+  "username": "juan.perez",
+  "email": "juan.perez@universidad.edu.mx",
+  "password": "MiContraseña2026!",
+  "firstName": "Juan",
+  "lastName": "Pérez"
+}
+
+###
+
+### Resend verification (si ya existe)
+POST http://127.0.0.1:8000/api/auth/verify/email/resend?email=juan.perez@universidad.edu.mx
+
+###
+
+### Confirm verification (usa el token obtenido del correo)
+POST http://127.0.0.1:8000/api/auth/verify/email/confirm
+Content-Type: application/json
+
+{
+  "token": "PEGAR_TOKEN_AQUI"
+}
+
+###
+
+### Login (fallará hasta que el usuario sea verificado/activado)
+# @name login
+POST http://127.0.0.1:8000/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "juan.perez",
+  "password": "MiContraseña2026!"
+}
+
+###
+
+### Refresh
+POST http://127.0.0.1:8000/api/auth/refresh
+Authorization: Bearer {{login.response.body.data.refreshToken}}
+
+###
+
+### Logout
+POST http://127.0.0.1:8000/api/auth/logout
+Authorization: Bearer {{login.response.body.data.token}}
+
+###
+
+### Auth me
+GET http://127.0.0.1:8000/api/auth/me
+Authorization: Bearer {{login.response.body.data.token}}
+
+###
+
+### Users me
+GET http://127.0.0.1:8000/api/users/me
+Authorization: Bearer {{login.response.body.data.token}}
+
+###
+
+### Users list (admin/security_admin)
+GET http://127.0.0.1:8000/api/users?limit=20&offset=0
+Authorization: Bearer {{login.response.body.data.token}}
+
+###
+
+### Update user role (admin)
+PATCH http://127.0.0.1:8000/api/users/USER_UUID_AQUI/role
+Authorization: Bearer {{login.response.body.data.token}}
+Content-Type: application/json
+
+{
+  "role": "SECURITY_ADMIN"
+}
+
+###
+
+### Forgot password
+POST http://127.0.0.1:8000/api/auth/forgot
+Content-Type: application/json
+
+{
+  "email": "juan.perez@universidad.edu.mx"
+}
+
+###
+
+### Reset password (usa el token recibido por correo)
+POST http://127.0.0.1:8000/api/auth/reset
+Content-Type: application/json
+
+{
+  "token": "PEGAR_RESET_TOKEN_AQUI",
+  "newPassword": "NuevaContraseña2026!"
+}
+
+###
+
+### Internal get user (si habilitas gateway secret)
+GET http://127.0.0.1:8000/api/internal/users/USER_UUID_AQUI
+X-Gateway-Secret: default-secret-change-me
+
+###
+
