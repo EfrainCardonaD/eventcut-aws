@@ -15,7 +15,7 @@ router = APIRouter(prefix="/internal/users", tags=["internal"], dependencies=[De
 
 @router.get("/summary", response_model=dict[str, UserSummaryResponse])
 def get_users_summary(
-    ids: list[str] = Query(default_factory=list, min_length=1, max_length=64, max_items=100),
+    ids: list[str] = Query(default_factory=list, max_length=100),
     db: Session = Depends(get_db),
 ):
     if len(ids) > 100:

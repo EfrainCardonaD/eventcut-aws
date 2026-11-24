@@ -70,7 +70,7 @@ def update_role(user_id: str, req: UpdateUserRoleRequest, db: Session = Depends(
     dependencies=[Depends(require_roles("ROLE_ADMIN", "ROLE_SECURITY_ADMIN"))],
 )
 def get_users_summary(
-    ids: list[str] = Query(default_factory=list, min_length=1, max_length=64, max_items=100),
+    ids: list[str] = Query(default_factory=list, max_length=100),
     db: Session = Depends(get_db),
 ):
     if len(ids) > 100:

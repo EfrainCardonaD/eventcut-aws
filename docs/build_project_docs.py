@@ -525,7 +525,7 @@ def build_main_documentation():
             ],
             [
                 "2. Contenedor Caído",
-                "sudo docker kill eventcut-auth-service vía SSH",
+                "Crash OOM (kill -9 PID de eventcut-auth-service) vía SSH",
                 f"Disponibilidad ALB: {t2.get('availability_pct', '-')}% | Recuperación Docker: {t2.get('recovery_seconds', '-')}s",
                 "APROBADA" if t2.get("passed") else "PENDIENTE",
             ],
@@ -643,18 +643,18 @@ def build_resilience_guide():
     add_figure(doc, EVIDENCIAS_DIR / "chart_resilience_load_balancing.png", "Figura 1. Distribución de tráfico Multi-AZ y latencia bajo carga concurrente.", 6.6)
 
     # Prueba 2
-    add_section_heading(doc, "4. Prueba 2: Auto-Healing de Contenedor Docker (docker kill)")
+    add_section_heading(doc, "4. Prueba 2: Auto-Healing de Contenedor Docker (Crash OOM / SIGKILL)")
     add_body_p(
         doc,
-        "Simula el colapso repentino del microservicio de autenticación (OOM Kill o fallo fatal del proceso) ejecutando `sudo docker kill eventcut-auth-service` "
-        "mediante SSH en uno de los nodos EC2 mientras un sonda verifica el ALB cada segundo.",
+        "Simula el colapso repentino del microservicio de autenticación (OOM Kill o fallo fatal del proceso) enviando SIGKILL al PID real de "
+        "`eventcut-auth-service` mediante SSH en uno de los nodos EC2 mientras una sonda verifica el ALB cada segundo.",
     )
     add_code_block(
         doc,
         f"# Comando manual equivalente para demostrar en clase:\n"
-        f"ssh -i labsuser.pem ec2-user@{(t2.get('target_node') or {}).get('public_ip', '<EC2_IP>')} \"sudo docker kill eventcut-auth-service\"\n"
-        f"# Verificar auto-reinicio inmediato:\n"
-        f"ssh -i labsuser.pem ec2-user@{(t2.get('target_node') or {}).get('public_ip', '<EC2_IP>')} \"sudo docker ps\"",
+        f"ssh -i labsuser.pem ec2-user@{(t2.get('target_node') or {}).get('public_ip', '<EC2_IP>')} \"PID=$(sudo docker inspect -f '{{{{.State.Pid}}}}' eventcut-auth-service) && sudo kill -9 $PID\"\n"
+        f"# Verificar auto-reinicio inmediato (restart: always):\n"
+        f"ssh -i labsuser.pem ec2-user@{(t2.get('target_node') or {}).get('public_ip', '<EC2_IP>')} \"sudo docker inspect -f '{{{{.State.Running}}}} restarts={{{{.RestartCount}}}}' eventcut-auth-service\"",
     )
     add_bullet(doc, "Nodo intervenido: ", f"{(t2.get('target_node') or {}).get('instance_id', '-')} ({(t2.get('target_node') or {}).get('az', '-')})")
     add_bullet(doc, "Tiempo de auto-recuperación del contenedor: ", f"{t2.get('recovery_seconds', '-')} segundos")

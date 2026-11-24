@@ -17,6 +17,9 @@ jobs:
     defaults:
       run:
         working-directory: frontend
+    env:
+      HAS_AWS_CREDS: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+      FRONTEND_BUCKET: ${{ vars.AWS_S3_FRONTEND_BUCKET }}
 
     steps:
       - name: Checkout Monorepo
@@ -46,8 +49,8 @@ jobs:
           name: eventcut-frontend-dist
           path: frontend/dist
 
-      - name: Configure AWS credentials (if configured)
-        if: github.ref == 'refs/heads/main' && secrets.AWS_ACCESS_KEY_ID != '' && vars.AWS_S3_FRONTEND_BUCKET != ''
+      - name: Configure AWS credentials (when configured)
+        if: github.ref == 'refs/heads/main' && env.HAS_AWS_CREDS == 'true' && env.FRONTEND_BUCKET != ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -56,7 +59,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Deploy SPA to Amazon S3 Static Website
-        if: github.ref == 'refs/heads/main' && secrets.AWS_ACCESS_KEY_ID != '' && vars.AWS_S3_FRONTEND_BUCKET != ''
+        if: github.ref == 'refs/heads/main' && env.HAS_AWS_CREDS == 'true' && env.FRONTEND_BUCKET != ''
         run: |
-          aws s3 sync dist/ "s3://${{ vars.AWS_S3_FRONTEND_BUCKET }}/" --delete --exclude "index.html" --cache-control "public,max-age=31536000,immutable"
-          aws s3 cp dist/index.html "s3://${{ vars.AWS_S3_FRONTEND_BUCKET }}/index.html" --cache-control "no-cache,no-store,must-revalidate" --content-type "text/html"
+          aws s3 sync dist/ "s3://${FRONTEND_BUCKET}/" --delete --exclude "index.html" --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp dist/index.html "s3://${FRONTEND_BUCKET}/index.html" --cache-control "no-cache,no-store,must-revalidate" --content-type "text/html"

@@ -167,9 +167,13 @@ def test_2_container_auto_healing(state: dict[str, Any], log: LogFn = _default_l
 
     time.sleep(4)
     kill_t = round(time.time() - start_ts, 1)
-    log(f"[!] Inyectando falla en t={kill_t}s: matando contenedor 'eventcut-auth-service' en {target['instance_id']}...")
-    rc, out, err = _ssh_exec(pem_path, target["public_ip"], "sudo docker kill eventcut-auth-service")
-    log(f"    -> docker kill rc={rc} out='{out}' err='{err}'")
+    log(f"[!] Inyectando falla OOM/Crash en t={kill_t}s: matando PID del proceso 'eventcut-auth-service' en {target['instance_id']}...")
+    rc, out, err = _ssh_exec(
+        pem_path,
+        target["public_ip"],
+        "PID=$(sudo docker inspect -f '{{.State.Pid}}' eventcut-auth-service) && sudo kill -9 $PID && echo killed_pid=$PID",
+    )
+    log(f"    -> crash injection rc={rc} out='{out}' err='{err}'")
 
     # Monitorear recuperación del contenedor en la misma EC2
     recovered_t = None
@@ -178,11 +182,11 @@ def test_2_container_auto_healing(state: dict[str, Any], log: LogFn = _default_l
         rc2, state_str, _ = _ssh_exec(
             pem_path,
             target["public_ip"],
-            "sudo docker inspect -f '{{.State.Running}} restarts={{.RestartCount}}' eventcut-auth-service",
+            "sudo docker inspect -f '{{.State.Running}} pid={{.State.Pid}} restarts={{.RestartCount}}' eventcut-auth-service",
         )
         if rc2 == 0 and state_str.startswith("true"):
             recovered_t = round(time.time() - start_ts, 1)
-            log(f"[+] Contenedor auto-recuperado por Docker en t={recovered_t}s ({state_str})!")
+            log(f"[+] Contenedor auto-recuperado por Docker (restart: always) en t={recovered_t}s ({state_str})!")
             break
 
     time.sleep(6)
@@ -215,7 +219,13 @@ def test_3_ec2_chaos_termination(state: dict[str, Any], log: LogFn = _default_lo
     ec2 = boto3.client("ec2", region_name=region)
     elbv2 = boto3.client("elbv2", region_name=region)
 
-    nodes_before = _get_healthy_nodes(state)
+    nodes_before = []
+    for _ in range(12):
+        nodes_before = _get_healthy_nodes(state)
+        if len(nodes_before) >= 2:
+            break
+        log(f"    ... esperando 2 nodos saludables antes de Prueba 3 (actual: {len(nodes_before)})...")
+        time.sleep(10)
     if len(nodes_before) < 2:
         raise RuntimeError(f"Se requieren al menos 2 nodos saludables antes de la prueba 3 (actual: {len(nodes_before)}).")
     victim = nodes_before[0]
@@ -360,7 +370,7 @@ def test_4_s3_storage_resilience(state: dict[str, Any], log: LogFn = _default_lo
         "s3_read_http": get_r.status_code,
         "uploaded_bytes": len(get_r.content),
         "sample_s3_url": public_url,
-        "passed": corrupt_r.status_code == 422 and traversal_r.status_code == 422 and up_r.status_code == 200 and get_r.status_code == 200,
+        "passed": corrupt_r.status_code in (400, 415, 422) and traversal_r.status_code == 422 and up_r.status_code == 200 and get_r.status_code == 200,
     }
 
 

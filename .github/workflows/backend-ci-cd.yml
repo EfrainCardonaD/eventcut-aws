@@ -17,6 +17,10 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      HAS_AWS_CREDS: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+      ARTIFACTS_BUCKET: ${{ vars.AWS_S3_ARTIFACTS_BUCKET }}
+      ASG_NAME: ${{ vars.AWS_ASG_NAME || 'eventcut-asg' }}
 
     steps:
       - name: Checkout Monorepo
@@ -39,8 +43,8 @@ jobs:
         run: |
           tar --exclude='.env' --exclude='__pycache__' --exclude='.pytest_cache' -czf ../backend-latest.tar.gz .
 
-      - name: Configure AWS credentials (if configured)
-        if: github.ref == 'refs/heads/main' && secrets.AWS_ACCESS_KEY_ID != '' && vars.AWS_S3_ARTIFACTS_BUCKET != ''
+      - name: Configure AWS credentials (when configured)
+        if: github.ref == 'refs/heads/main' && env.HAS_AWS_CREDS == 'true' && env.ARTIFACTS_BUCKET != ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -49,9 +53,9 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Publish backend artifact to S3 & Trigger Zero-Downtime ASG Instance Refresh
-        if: github.ref == 'refs/heads/main' && secrets.AWS_ACCESS_KEY_ID != '' && vars.AWS_S3_ARTIFACTS_BUCKET != ''
+        if: github.ref == 'refs/heads/main' && env.HAS_AWS_CREDS == 'true' && env.ARTIFACTS_BUCKET != ''
         run: |
-          aws s3 cp ../backend-latest.tar.gz "s3://${{ vars.AWS_S3_ARTIFACTS_BUCKET }}/releases/backend-latest.tar.gz"
+          aws s3 cp ../backend-latest.tar.gz "s3://${ARTIFACTS_BUCKET}/releases/backend-latest.tar.gz"
           aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name "${{ vars.AWS_ASG_NAME || 'eventcut-asg' }}" \
+            --auto-scaling-group-name "${ASG_NAME}" \
             --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 240}'
